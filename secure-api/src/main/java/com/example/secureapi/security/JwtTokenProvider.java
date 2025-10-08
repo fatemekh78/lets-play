@@ -21,13 +21,13 @@ import java.util.Date;
 @Component
 public class JwtTokenProvider {
     private final AuthenticationManager authenticationManager;
-    private final JwtTokenProvider tokenProvider;
+
     @Value("${jwt.secret}")
     private String jwtSecret;
 
-    public JwtTokenProvider(AuthenticationManager authenticationManager, JwtTokenProvider tokenProvider) {
+    @Autowired
+    public JwtTokenProvider(AuthenticationManager authenticationManager) {
         this.authenticationManager = authenticationManager;
-        this.tokenProvider = tokenProvider;
     }
 
     private Key getKey() {
@@ -65,6 +65,7 @@ public class JwtTokenProvider {
         }
         return false;
     }
+
     public Cookie createCookie(String JWTToken, int maxAge) {
         Cookie jwtCookie = new Cookie("jwt", JWTToken);
         jwtCookie.setHttpOnly(true);
@@ -73,16 +74,17 @@ public class JwtTokenProvider {
         jwtCookie.setMaxAge(maxAge);
         return jwtCookie;
     }
+
     public Cookie saveJwtInCookie(String email, String password) {
         Authentication authentication = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(
-                       email,
+                        email,
                         password
                 )
         );
 
         SecurityContextHolder.getContext().setAuthentication(authentication);
-        String jwt = tokenProvider.generateToken(authentication);
+        String jwt = this.generateToken(authentication); // Use 'this' instead of tokenProvider
         return this.createCookie(jwt, 24 * 60 * 60);
     }
 }

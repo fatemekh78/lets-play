@@ -1,7 +1,5 @@
-// src/main/java/com/example/secureapi/security/SecurityConfig.java
 package com.example.secureapi.security;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -25,9 +23,6 @@ import java.util.Arrays;
 @EnableMethodSecurity // Enables method-level security like @PreAuthorize
 public class SecurityConfig {
 
-    @Autowired
-    private JwtAuthenticationFilter jwtAuthenticationFilter;
-
     @Bean
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
@@ -39,20 +34,22 @@ public class SecurityConfig {
     }
 
     @Bean
-    public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
+    public SecurityFilterChain filterChain(HttpSecurity http, JwtAuthenticationFilter jwtAuthenticationFilter) throws Exception {
         http
-         .cors(cors -> cors.configurationSource(request -> {
+                .cors(cors -> cors.configurationSource(request -> {
                     CorsConfiguration configuration = new CorsConfiguration();
                     configuration.setAllowedOrigins(Arrays.asList("http://localhost:3000", "https://your-frontend-domain.com"));
                     configuration.setAllowedMethods(Arrays.asList("GET", "POST", "PUT", "DELETE", "OPTIONS"));
-                    configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type"));return configuration;}))
-            .csrf(AbstractHttpConfigurer::disable) // Disable CSRF for stateless APIs
-            .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
-            .authorizeHttpRequests(auth -> auth
-                .requestMatchers("/api/auth/**").permitAll() // Allow auth endpoints
-                .requestMatchers(HttpMethod.GET, "/api/products").permitAll() // Allow public access to GET products
-                .anyRequest().authenticated() // Secure all other endpoints
-            );
+                    configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type"));
+                    return configuration;
+                }))
+                .csrf(AbstractHttpConfigurer::disable) // Disable CSRF for stateless APIs
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
+                .authorizeHttpRequests(auth -> auth
+                        .requestMatchers("/api/auth/**").permitAll() // Allow auth endpoints
+                        .requestMatchers(HttpMethod.GET, "/api/products").permitAll() // Allow public access to GET products
+                        .anyRequest().authenticated() // Secure all other endpoints
+                );
 
         http.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);
 
