@@ -43,7 +43,7 @@ public class UserController {
     }
 
     @GetMapping
-    @PreAuthorize("hasAuthority('ADMIN')")
+   @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<List<User>> getAllUsers() {
         return ResponseEntity.ok().body(userRepository.findAll());
     }
@@ -85,19 +85,50 @@ public class UserController {
         return ResponseEntity.ok().body(userResponse);
     }
     @PutMapping("/me")
-    public ResponseEntity<String> updateMyInfo(@AuthenticationPrincipal UserDetails user,@RequestBody UserUpdate userUpdate, HttpServletResponse response) {
-        User loggedInUser = userRepository.findByEmail(user.getUsername()).orElseThrow(() -> new ResourceNotFoundException("wrong user logged in"));
+    public ResponseEntity<String> updateMyInfo(
+            @AuthenticationPrincipal UserDetails user,
+            @RequestBody UserUpdate userUpdate,
+            HttpServletResponse response
+    ) {
+        User loggedInUser = userRepository.findByEmail(user.getUsername())
+                .orElseThrow(() -> new ResourceNotFoundException("wrong user logged in"));
+
+        // Variable to temporarily hold the PLAIN TEXT password for the new JWT
+        String passwordForNewToken = null;
+
+        // 1. Update Name
         if(!userUpdate.getName().isBlank()) {
             loggedInUser.setName(userUpdate.getName());
         }
+
+        // 2. Update Email
         if(!userUpdate.getEmail().isBlank()) {
             loggedInUser.setEmail(userUpdate.getEmail());
         }
+
+        // 3. Update Password
         if(!userUpdate.getPassword().isBlank()) {
-            loggedInUser.setPassword(passwordEncoder.encode(userUpdate.getPassword()));
+            // Store the PLAIN TEXT password for the new JWT
+            passwordForNewToken = userUpdate.getPassword();
+
+            // HASH the password immediately for storage in the database
+            String hashedPassword = passwordEncoder.encode(userUpdate.getPassword());
+            loggedInUser.setPassword(hashedPassword);
         }
-        response.addCookie(jwtTokenProvider.saveJwtInCookie(loggedInUser.getEmail(), loggedInUser.getPassword()));
-        return ResponseEntity.ok("updated successfully");
+
+        // 4. Save the user (with new hash) to the database
+        userRepository.save(loggedInUser);
+
+        // 5. Generate and set a new token
+        // If the password was updated, use the plain-text passwordForNewToken;
+        // otherwise, use the original email/password combination to re-authenticate
+        // NOTE: This logic assumes your token provider can handle an existing user's data
+        if (passwordForNewToken != null) {
+            // Use the newly set plain-text password to generate a fresh, authenticated token
+            response.addCookie(jwtTokenProvider.saveJwtInCookie(loggedInUser.getEmail(), passwordForNewToken));
+        }
+
+        return ResponseEntity.ok("Updated successfully");
     }
     @DeleteMapping("/me")
     public ResponseEntity<String> deleteMyInfo(@AuthenticationPrincipal UserDetails user, HttpServletResponse response) {

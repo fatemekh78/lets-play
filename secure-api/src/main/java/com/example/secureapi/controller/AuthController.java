@@ -8,6 +8,7 @@ import com.example.secureapi.model.UserRole;
 import com.example.secureapi.repository.UserRepository;
 import com.example.secureapi.security.JwtTokenProvider;
 import jakarta.servlet.http.Cookie;
+import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -56,5 +57,11 @@ public class AuthController {
         userRepository.save(user);
 
         return new ResponseEntity<>("User registered successfully", HttpStatus.CREATED);
+    }
+    @PostMapping("/logout")
+    public ResponseEntity<String> logout(HttpServletResponse response) {
+        Cookie cookie = jwtTokenProvider.createCookie(null, 0);
+        response.addCookie(cookie);
+        return ResponseEntity.ok("Logout successful");
     }
 }

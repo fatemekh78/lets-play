@@ -1,4 +1,4 @@
-package com.example.secureapi.config; // A new package for configuration
+package com.example.secureapi.security; // A new package for configuration
 
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
