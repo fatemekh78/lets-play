@@ -33,35 +33,81 @@ public class AuthController {
 
     @Autowired
     private PasswordEncoder passwordEncoder;
+
     @Autowired
     private JwtTokenProvider jwtTokenProvider;
 
+    @Autowired
+    private AuthenticationManager authenticationManager; // Add this
 
     @PostMapping("/login")
-    public ResponseEntity<String> authenticateUser(@Valid @RequestBody LoginRequest loginRequest,  HttpServletResponse response) {
-        response.addCookie(jwtTokenProvider.saveJwtInCookie(loginRequest.getEmail(), loginRequest.getPassword()));
-        return ResponseEntity.ok("logged in successfully");
+    public ResponseEntity<?> authenticateUser(@Valid @RequestBody LoginRequest loginRequest, HttpServletResponse response) {
+        try {
+            // Authenticate user
+            Authentication authentication = authenticationManager.authenticate(
+                    new UsernamePasswordAuthenticationToken(
+                            loginRequest.getEmail(),
+                            loginRequest.getPassword()
+                    )
+            );
+
+            SecurityContextHolder.getContext().setAuthentication(authentication);
+
+            // Create JWT token and add to cookie
+            Cookie jwtCookie = jwtTokenProvider.generateJwtCookie(authentication);
+            response.addCookie(jwtCookie);
+
+            return ResponseEntity.ok("Logged in successfully");
+
+        } catch (Exception e) {
+            System.err.println(e.getMessage());
+            return new ResponseEntity<>("Invalid email or password", HttpStatus.UNAUTHORIZED);
+        }
     }
 
     @PostMapping("/register")
     public ResponseEntity<?> registerUser(@Valid @RequestBody User user) {
-        if (userRepository.findByEmail(user.getEmail()).isPresent()) {
-            return new ResponseEntity<>("Email Address already in use!", HttpStatus.BAD_REQUEST);
+        try {
+            // Check if email already exists
+            if (userRepository.findByEmail(user.getEmail()).isPresent()) {
+                return new ResponseEntity<>("Email address already in use!", HttpStatus.BAD_REQUEST);
+            }
+
+            // Validate required fields (additional safety)
+            if (user.getName() == null || user.getName().trim().isEmpty()) {
+                return new ResponseEntity<>("Name is required", HttpStatus.BAD_REQUEST);
+            }
+
+            if (user.getEmail() == null || user.getEmail().trim().isEmpty()) {
+                return new ResponseEntity<>("Email is required", HttpStatus.BAD_REQUEST);
+            }
+
+            if (user.getPassword() == null || user.getPassword().trim().isEmpty()) {
+                return new ResponseEntity<>("Password is required", HttpStatus.BAD_REQUEST);
+            }
+
+            // Hash password
+            user.setPassword(passwordEncoder.encode(user.getPassword()));
+            // Default role
+            user.setRole(UserRole.ROLE_USER);
+
+            User savedUser = userRepository.save(user);
+
+            return new ResponseEntity<>("User registered successfully", HttpStatus.CREATED);
+
+        } catch (Exception e) {
+            return new ResponseEntity<>("Registration failed: " + e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
         }
-
-        // Hash password
-        user.setPassword(passwordEncoder.encode(user.getPassword()));
-        // Default role
-        user.setRole(UserRole.ROLE_USER);
-
-        userRepository.save(user);
-
-        return new ResponseEntity<>("User registered successfully", HttpStatus.CREATED);
     }
+
     @PostMapping("/logout")
     public ResponseEntity<String> logout(HttpServletResponse response) {
-        Cookie cookie = jwtTokenProvider.createCookie(null, 0);
-        response.addCookie(cookie);
-        return ResponseEntity.ok("Logout successful");
+        try {
+            Cookie cookie = jwtTokenProvider.createLogoutCookie();
+            response.addCookie(cookie);
+            return ResponseEntity.ok("Logout successful");
+        } catch (Exception e) {
+            return new ResponseEntity<>("Logout failed", HttpStatus.INTERNAL_SERVER_ERROR);
+        }
     }
 }

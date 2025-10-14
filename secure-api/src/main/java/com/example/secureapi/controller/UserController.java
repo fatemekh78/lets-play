@@ -20,7 +20,6 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
-import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
 
@@ -31,117 +30,138 @@ import java.util.List;
 public class UserController {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
-    private final  JwtTokenProvider jwtTokenProvider;
+    private final JwtTokenProvider jwtTokenProvider;
     private final ProductRepository productRepository;
+    private final AuthenticationManager authenticationManager;
 
-@Autowired
-    public UserController(ProductRepository productRepository,UserRepository userRepository, PasswordEncoder passwordEncoder, JwtTokenProvider jwtTokenProvider) {
+    @Autowired
+    public UserController(ProductRepository productRepository,
+                          UserRepository userRepository,
+                          PasswordEncoder passwordEncoder,
+                          JwtTokenProvider jwtTokenProvider,
+                          AuthenticationManager authenticationManager) {
         this.userRepository = userRepository;
         this.passwordEncoder = passwordEncoder;
         this.jwtTokenProvider = jwtTokenProvider;
         this.productRepository = productRepository;
+        this.authenticationManager = authenticationManager;
     }
 
     @GetMapping
-   @PreAuthorize("hasRole('ADMIN')")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<List<User>> getAllUsers() {
         return ResponseEntity.ok().body(userRepository.findAll());
     }
+
     @PutMapping
-    public ResponseEntity<String> updateInfo(@AuthenticationPrincipal UserDetails user,@RequestBody UserUpdate userUpdate, HttpServletResponse response) {
-        User loggedInUser = userRepository.findByEmail(user.getUsername()).orElseThrow(() -> new ResourceNotFoundException("wrong user logged in"));
-        if(!userUpdate.getName().isBlank()) {
-            loggedInUser.setName(userUpdate.getName());
-        }
-        if(!userUpdate.getEmail().isBlank()) {
-            loggedInUser.setEmail(userUpdate.getEmail());
-        }
-        if(!userUpdate.getPassword().isBlank()) {
-            loggedInUser.setPassword(passwordEncoder.encode(userUpdate.getPassword()));
-        }
-        response.addCookie(jwtTokenProvider.saveJwtInCookie(loggedInUser.getEmail(), loggedInUser.getPassword()));
-        return ResponseEntity.ok("updated successfully");
-    }
-    @DeleteMapping
-    public ResponseEntity<String> deleteInfo(@AuthenticationPrincipal UserDetails user, HttpServletResponse response) {
-        User loggedInUser = userRepository.findByEmail(user.getUsername()).orElseThrow(() -> new ResourceNotFoundException("wrong user logged in"));
-        List<Product> userProducts = productRepository.findByUserId(loggedInUser.getId());
-        if(!userProducts.isEmpty()) {
-            productRepository.deleteAll(userProducts);
-        }
-        userRepository.deleteById(loggedInUser.getId());
-        Cookie cookie = jwtTokenProvider.createCookie(null,0);
-        response.addCookie(cookie);
-        return ResponseEntity.ok("deleted successfully");
-    }
+    public ResponseEntity<String> updateInfo(@AuthenticationPrincipal UserDetails userDetails,
+                                             @Valid @RequestBody UserUpdate userUpdate,
+                                             HttpServletResponse response) {
+        User loggedInUser = userRepository.findByEmail(userDetails.getUsername())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
-    @GetMapping("/me")
-    public ResponseEntity<UserResponse> getMyInfo(@AuthenticationPrincipal UserDetails user) {
-        User loggedInUser = userRepository.findByEmail(user.getUsername()).orElseThrow(() -> new ResourceNotFoundException("wrong user logged in"));
-        UserResponse userResponse = new UserResponse();
-        userResponse.setEmail(loggedInUser.getEmail());
-        userResponse.setName(loggedInUser.getName());
-        userResponse.setRole(loggedInUser.getRole().toString());
-        return ResponseEntity.ok().body(userResponse);
-    }
-    @PutMapping("/me")
-    public ResponseEntity<String> updateMyInfo(
-            @AuthenticationPrincipal UserDetails user,
-            @RequestBody UserUpdate userUpdate,
-            HttpServletResponse response
-    ) {
-        User loggedInUser = userRepository.findByEmail(user.getUsername())
-                .orElseThrow(() -> new ResourceNotFoundException("wrong user logged in"));
+        boolean needsNewToken = false;
+        String newEmail = null;
+        String newPassword = null;
 
-        // Variable to temporarily hold the PLAIN TEXT password for the new JWT
-        String passwordForNewToken = null;
-
-        // 1. Update Name
-        if(!userUpdate.getName().isBlank()) {
-            loggedInUser.setName(userUpdate.getName());
+        // Update name
+        if(userUpdate.getName() != null && !userUpdate.getName().isBlank()) {
+            loggedInUser.setName(userUpdate.getName().trim());
         }
 
-        // 2. Update Email
-        if(!userUpdate.getEmail().isBlank()) {
-            loggedInUser.setEmail(userUpdate.getEmail());
+        // Update email
+        if(userUpdate.getEmail() != null && !userUpdate.getEmail().isBlank()) {
+            String updatedEmail = userUpdate.getEmail().trim();
+            // Check if email is already taken by another user
+            if(!updatedEmail.equals(loggedInUser.getEmail()) &&
+                    userRepository.findByEmail(updatedEmail).isPresent()) {
+                return ResponseEntity.badRequest().body("Email is already in use");
+            }
+            loggedInUser.setEmail(updatedEmail);
+            newEmail = updatedEmail;
+            needsNewToken = true;
         }
 
-        // 3. Update Password
-        if(!userUpdate.getPassword().isBlank()) {
-            // Store the PLAIN TEXT password for the new JWT
-            passwordForNewToken = userUpdate.getPassword();
-
-            // HASH the password immediately for storage in the database
-            String hashedPassword = passwordEncoder.encode(userUpdate.getPassword());
-            loggedInUser.setPassword(hashedPassword);
+        // Update password
+        if(userUpdate.getPassword() != null && !userUpdate.getPassword().isBlank()) {
+            String newPasswordPlain = userUpdate.getPassword().trim();
+            loggedInUser.setPassword(passwordEncoder.encode(newPasswordPlain));
+            newPassword = newPasswordPlain;
+            needsNewToken = true;
         }
 
-        // 4. Save the user (with new hash) to the database
+        // Save updated user
         userRepository.save(loggedInUser);
 
-        // 5. Generate and set a new token
-        // If the password was updated, use the plain-text passwordForNewToken;
-        // otherwise, use the original email/password combination to re-authenticate
-        // NOTE: This logic assumes your token provider can handle an existing user's data
-        if (passwordForNewToken != null) {
-            // Use the newly set plain-text password to generate a fresh, authenticated token
-            response.addCookie(jwtTokenProvider.saveJwtInCookie(loggedInUser.getEmail(), passwordForNewToken));
+        // Generate new token if email or password was changed
+        if(needsNewToken) {
+            try {
+                // Re-authenticate with new credentials
+                String emailToUse = newEmail != null ? newEmail : loggedInUser.getEmail();
+                String passwordToUse = newPassword != null ? newPassword : userUpdate.getPassword();
+
+                Authentication authentication = authenticationManager.authenticate(
+                        new UsernamePasswordAuthenticationToken(emailToUse, passwordToUse)
+                );
+
+                Cookie newJwtCookie = jwtTokenProvider.generateJwtCookie(authentication);
+                response.addCookie(newJwtCookie);
+            } catch (Exception e) {
+                // If authentication fails, still return success but log the issue
+                System.err.println("Failed to generate new JWT token: " + e.getMessage());
+            }
         }
 
         return ResponseEntity.ok("Updated successfully");
     }
-    @DeleteMapping("/me")
-    public ResponseEntity<String> deleteMyInfo(@AuthenticationPrincipal UserDetails user, HttpServletResponse response) {
-        User loggedInUser = userRepository.findByEmail(user.getUsername()).orElseThrow(() -> new ResourceNotFoundException("wrong user logged in"));
+
+    @DeleteMapping
+    public ResponseEntity<String> deleteInfo(@AuthenticationPrincipal UserDetails userDetails,
+                                             HttpServletResponse response) {
+        User loggedInUser = userRepository.findByEmail(userDetails.getUsername())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        // Delete user's products
         List<Product> userProducts = productRepository.findByUserId(loggedInUser.getId());
         if(!userProducts.isEmpty()) {
             productRepository.deleteAll(userProducts);
         }
+
+        // Delete user
         userRepository.deleteById(loggedInUser.getId());
-        Cookie cookie = jwtTokenProvider.createCookie(null,0);
-        response.addCookie(cookie);
-        return ResponseEntity.ok("deleted successfully");
+
+        // Clear JWT cookie
+        Cookie logoutCookie = jwtTokenProvider.createLogoutCookie();
+        response.addCookie(logoutCookie);
+
+        return ResponseEntity.ok("Deleted successfully");
     }
 
+    @GetMapping("/me")
+    public ResponseEntity<UserResponse> getMyInfo(@AuthenticationPrincipal UserDetails userDetails) {
+        User loggedInUser = userRepository.findByEmail(userDetails.getUsername())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
+        UserResponse userResponse = new UserResponse();
+        userResponse.setEmail(loggedInUser.getEmail());
+        userResponse.setName(loggedInUser.getName());
+        userResponse.setRole(loggedInUser.getRole().toString());
+
+        return ResponseEntity.ok().body(userResponse);
+    }
+
+    @PutMapping("/me")
+    public ResponseEntity<String> updateMyInfo(@AuthenticationPrincipal UserDetails userDetails,
+                                               @Valid @RequestBody UserUpdate userUpdate,
+                                               HttpServletResponse response) {
+        // Reuse the same logic as the general update method
+        return updateInfo(userDetails, userUpdate, response);
+    }
+
+    @DeleteMapping("/me")
+    public ResponseEntity<String> deleteMyInfo(@AuthenticationPrincipal UserDetails userDetails,
+                                               HttpServletResponse response) {
+        // Reuse the same logic as the general delete method
+        return deleteInfo(userDetails, response);
+    }
 }

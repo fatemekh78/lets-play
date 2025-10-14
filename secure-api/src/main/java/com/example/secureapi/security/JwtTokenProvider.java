@@ -1,90 +1,79 @@
-// src/main/java/com/example/secureapi/security/JwtTokenProvider.java
 package com.example.secureapi.security;
 
-import io.jsonwebtoken.Claims;
-import io.jsonwebtoken.Jwts;
-import io.jsonwebtoken.SignatureAlgorithm;
+import io.jsonwebtoken.*;
 import io.jsonwebtoken.security.Keys;
-import jakarta.servlet.http.Cookie;
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.security.authentication.AuthenticationManager;
-import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
-import org.springframework.security.core.context.SecurityContextHolder;
-import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Component;
 
+import jakarta.servlet.http.Cookie;
 import java.security.Key;
 import java.util.Date;
 
 @Component
 public class JwtTokenProvider {
-    private final AuthenticationManager authenticationManager;
 
-    @Value("${jwt.secret}")
+    @Value("${app.jwt.secret:mySuperSecretKeyThatIsAtLeast32CharactersLong!}")
     private String jwtSecret;
 
-    @Autowired
-    public JwtTokenProvider(AuthenticationManager authenticationManager) {
-        this.authenticationManager = authenticationManager;
-    }
+    @Value("${app.jwt.expiration:86400000}") // 24 hours
+    private int jwtExpirationMs;
 
-    private Key getKey() {
-        return Keys.hmacShaKeyFor(jwtSecret.getBytes());
+    private Key getSigningKey() {
+        byte[] keyBytes = jwtSecret.getBytes();
+        return Keys.hmacShaKeyFor(keyBytes);
     }
 
     public String generateToken(Authentication authentication) {
-        UserDetails userDetails = (UserDetails) authentication.getPrincipal();
+        String username = authentication.getName();
+
         Date now = new Date();
-        Date expiryDate = new Date(now.getTime() + 86400000); // 24 hours
+        Date expiryDate = new Date(now.getTime() + jwtExpirationMs);
 
         return Jwts.builder()
-                .setSubject(userDetails.getUsername())
-                .setIssuedAt(new Date())
+                .setSubject(username)
+                .setIssuedAt(now)
                 .setExpiration(expiryDate)
-                .signWith(getKey(), SignatureAlgorithm.HS256)
+                .signWith(getSigningKey(),SignatureAlgorithm.HS256)
                 .compact();
     }
 
     public String getUsernameFromJWT(String token) {
         Claims claims = Jwts.parserBuilder()
-                .setSigningKey(getKey())
+                .setSigningKey(getSigningKey())
                 .build()
                 .parseClaimsJws(token)
                 .getBody();
         return claims.getSubject();
     }
 
-    public boolean validateToken(String authToken) {
+    public boolean validateToken(String token) {
         try {
-            Jwts.parserBuilder().setSigningKey(getKey()).build().parseClaimsJws(authToken);
+            Jwts.parserBuilder()
+                    .setSigningKey(getSigningKey())
+                    .build()
+                    .parseClaimsJws(token);
             return true;
-        } catch (Exception ex) {
-            // Log exception
+        } catch (Exception e) {
+            // Simple validation without logging
+            return false;
         }
-        return false;
     }
 
-    public Cookie createCookie(String JWTToken, int maxAge) {
-        Cookie jwtCookie = new Cookie("jwt", JWTToken);
-        jwtCookie.setHttpOnly(true);
-        jwtCookie.setSecure(true);
-        jwtCookie.setPath("/");
-        jwtCookie.setMaxAge(maxAge);
-        return jwtCookie;
+    public Cookie generateJwtCookie(Authentication authentication) {
+        String jwt = generateToken(authentication);
+        Cookie cookie = new Cookie("jwt", jwt);
+        cookie.setPath("/");
+        cookie.setHttpOnly(true);
+        cookie.setMaxAge(24 * 60 * 60); // 1 day
+        return cookie;
     }
 
-    public Cookie saveJwtInCookie(String email, String password) {
-        Authentication authentication = authenticationManager.authenticate(
-                new UsernamePasswordAuthenticationToken(
-                        email,
-                        password
-                )
-        );
-
-        SecurityContextHolder.getContext().setAuthentication(authentication);
-        String jwt = this.generateToken(authentication); // Use 'this' instead of tokenProvider
-        return this.createCookie(jwt, 24 * 60 * 60);
+    public Cookie createLogoutCookie() {
+        Cookie cookie = new Cookie("jwt", "");
+        cookie.setPath("/");
+        cookie.setHttpOnly(true);
+        cookie.setMaxAge(0);
+        return cookie;
     }
 }
