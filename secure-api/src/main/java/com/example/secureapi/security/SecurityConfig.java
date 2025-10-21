@@ -36,6 +36,9 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http, JwtAuthenticationFilter jwtAuthenticationFilter) throws Exception {
         http
+                .requiresChannel(channel -> channel
+                        .anyRequest().requiresSecure() // FORCE HTTPS
+                )
                 .cors(cors -> cors.configurationSource(request -> {
                     CorsConfiguration configuration = new CorsConfiguration();
                     configuration.setAllowedOrigins(Arrays.asList("http://localhost:3000", "https://your-frontend-domain.com"));
@@ -43,12 +46,12 @@ public class SecurityConfig {
                     configuration.setAllowedHeaders(Arrays.asList("Authorization", "Content-Type"));
                     return configuration;
                 }))
-                .csrf(AbstractHttpConfigurer::disable) // Disable CSRF for stateless APIs
+                .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**").permitAll() // Allow auth endpoints
-                        .requestMatchers(HttpMethod.GET, "/api/products").permitAll() // Allow public access to GET products
-                        .anyRequest().authenticated() // Secure all other endpoints
+                        .requestMatchers("/api/auth/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/products").permitAll()
+                        .anyRequest().authenticated()
                 );
 
         http.addFilterBefore(jwtAuthenticationFilter, UsernamePasswordAuthenticationFilter.class);

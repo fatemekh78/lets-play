@@ -100,7 +100,7 @@ public class UserController {
             try {
                 // Re-authenticate with new credentials
                 String emailToUse = newEmail != null ? newEmail : UpdateUser.getEmail();
-                String passwordToUse = newPassword != null ? newPassword : userUpdate.getPassword();
+                String passwordToUse = userUpdate.getPassword();
 
                 Authentication authentication = authenticationManager.authenticate(
                         new UsernamePasswordAuthenticationToken(emailToUse, passwordToUse)

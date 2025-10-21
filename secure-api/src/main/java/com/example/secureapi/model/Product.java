@@ -6,6 +6,7 @@ import jakarta.validation.constraints.Positive;
 import lombok.Data;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.mapping.Document;
+import org.springframework.data.mongodb.core.mapping.Field;
 
 @Document(collection = "products")
 @Data
@@ -23,5 +24,6 @@ public class Product {
     private Double price;
 
     // Stores the ID of the user who owns this product
+    @Field("user_id")
     private String userId;
 }
