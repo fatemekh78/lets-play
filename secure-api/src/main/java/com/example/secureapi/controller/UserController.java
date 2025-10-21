@@ -117,27 +117,6 @@ public class UserController {
         return ResponseEntity.ok("Updated successfully");
     }
 
-    @DeleteMapping
-    public ResponseEntity<String> deleteInfo(@AuthenticationPrincipal UserDetails userDetails,
-                                             HttpServletResponse response) {
-        User loggedInUser = userRepository.findByEmail(userDetails.getUsername())
-                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
-
-        // Delete user's products
-        List<Product> userProducts = productRepository.findByUserId(loggedInUser.getId());
-        if(!userProducts.isEmpty()) {
-            productRepository.deleteAll(userProducts);
-        }
-
-        // Delete user
-        userRepository.deleteById(loggedInUser.getId());
-
-        // Clear JWT cookie
-        Cookie logoutCookie = jwtTokenProvider.createLogoutCookie();
-        response.addCookie(logoutCookie);
-
-        return ResponseEntity.ok("Deleted successfully");
-    }
 
     @GetMapping("/me")
     public ResponseEntity<UserResponse> getMyInfo(@AuthenticationPrincipal UserDetails userDetails) {
@@ -216,8 +195,23 @@ public class UserController {
 
     @DeleteMapping("/me")
     public ResponseEntity<String> deleteMyInfo(@AuthenticationPrincipal UserDetails userDetails,
-                                               HttpServletResponse response) {
-        // Reuse the same logic as the general delete method
-        return deleteInfo(userDetails, response);
+    HttpServletResponse response) {
+        User loggedInUser = userRepository.findByEmail(userDetails.getUsername())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        // Delete user's products
+        List<Product> userProducts = productRepository.findByUserId(loggedInUser.getId());
+        if(!userProducts.isEmpty()) {
+            productRepository.deleteAll(userProducts);
+        }
+
+        // Delete user
+        userRepository.deleteById(loggedInUser.getId());
+
+        // Clear JWT cookie
+        Cookie logoutCookie = jwtTokenProvider.createLogoutCookie();
+        response.addCookie(logoutCookie);
+
+        return ResponseEntity.ok("Deleted successfully");
     }
 }
