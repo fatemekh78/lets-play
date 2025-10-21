@@ -53,11 +53,13 @@ public class UserController {
         return ResponseEntity.ok().body(userRepository.findAll());
     }
 
-    @PutMapping
-    public ResponseEntity<String> updateInfo(@AuthenticationPrincipal UserDetails userDetails,
+    @PutMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<String> updateInfo(
                                              @Valid @RequestBody UserUpdate userUpdate,
+                                             @PathVariable String id,
                                              HttpServletResponse response) {
-        User loggedInUser = userRepository.findByEmail(userDetails.getUsername())
+        User UpdateUser = userRepository.findById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
         boolean needsNewToken = false;
@@ -65,39 +67,39 @@ public class UserController {
         String newPassword = null;
 
         // Update name
-        if(userUpdate.getName() != null && !userUpdate.getName().isBlank()) {
-            loggedInUser.setName(userUpdate.getName().trim());
+        if (userUpdate.getName() != null && !userUpdate.getName().isBlank()) {
+            UpdateUser.setName(userUpdate.getName().trim());
         }
 
         // Update email
-        if(userUpdate.getEmail() != null && !userUpdate.getEmail().isBlank()) {
+        if (userUpdate.getEmail() != null && !userUpdate.getEmail().isBlank()) {
             String updatedEmail = userUpdate.getEmail().trim();
             // Check if email is already taken by another user
-            if(!updatedEmail.equals(loggedInUser.getEmail()) &&
+            if (!updatedEmail.equals(UpdateUser.getEmail()) &&
                     userRepository.findByEmail(updatedEmail).isPresent()) {
                 return ResponseEntity.badRequest().body("Email is already in use");
             }
-            loggedInUser.setEmail(updatedEmail);
+            UpdateUser.setEmail(updatedEmail);
             newEmail = updatedEmail;
             needsNewToken = true;
         }
 
         // Update password
-        if(userUpdate.getPassword() != null && !userUpdate.getPassword().isBlank()) {
+        if (userUpdate.getPassword() != null && !userUpdate.getPassword().isBlank()) {
             String newPasswordPlain = userUpdate.getPassword().trim();
-            loggedInUser.setPassword(passwordEncoder.encode(newPasswordPlain));
+            UpdateUser.setPassword(passwordEncoder.encode(newPasswordPlain));
             newPassword = newPasswordPlain;
             needsNewToken = true;
         }
 
         // Save updated user
-        userRepository.save(loggedInUser);
+        userRepository.save(UpdateUser);
 
         // Generate new token if email or password was changed
-        if(needsNewToken) {
+        if (needsNewToken) {
             try {
                 // Re-authenticate with new credentials
-                String emailToUse = newEmail != null ? newEmail : loggedInUser.getEmail();
+                String emailToUse = newEmail != null ? newEmail : UpdateUser.getEmail();
                 String passwordToUse = newPassword != null ? newPassword : userUpdate.getPassword();
 
                 Authentication authentication = authenticationManager.authenticate(
@@ -154,8 +156,62 @@ public class UserController {
     public ResponseEntity<String> updateMyInfo(@AuthenticationPrincipal UserDetails userDetails,
                                                @Valid @RequestBody UserUpdate userUpdate,
                                                HttpServletResponse response) {
-        // Reuse the same logic as the general update method
-        return updateInfo(userDetails, userUpdate, response);
+        User UpdateUser = userRepository.findByEmail(userDetails.getUsername())
+                .orElseThrow(() -> new ResourceNotFoundException("User not found"));
+
+        boolean needsNewToken = false;
+        String newEmail = null;
+        String newPassword = null;
+
+        // Update name
+        if(userUpdate.getName() != null && !userUpdate.getName().isBlank()) {
+            UpdateUser.setName(userUpdate.getName().trim());
+        }
+
+        // Update email
+        if(userUpdate.getEmail() != null && !userUpdate.getEmail().isBlank()) {
+            String updatedEmail = userUpdate.getEmail().trim();
+            // Check if email is already taken by another user
+            if(!updatedEmail.equals(UpdateUser.getEmail()) &&
+                    userRepository.findByEmail(updatedEmail).isPresent()) {
+                return ResponseEntity.badRequest().body("Email is already in use");
+            }
+            UpdateUser.setEmail(updatedEmail);
+            newEmail = updatedEmail;
+            needsNewToken = true;
+        }
+
+        // Update password
+        if(userUpdate.getPassword() != null && !userUpdate.getPassword().isBlank()) {
+            String newPasswordPlain = userUpdate.getPassword().trim();
+            UpdateUser.setPassword(passwordEncoder.encode(newPasswordPlain));
+            newPassword = newPasswordPlain;
+            needsNewToken = true;
+        }
+
+        // Save updated user
+        userRepository.save(UpdateUser);
+
+        // Generate new token if email or password was changed
+        if(needsNewToken) {
+            try {
+                // Re-authenticate with new credentials
+                String emailToUse = newEmail != null ? newEmail : UpdateUser.getEmail();
+                String passwordToUse = newPassword != null ? newPassword : userUpdate.getPassword();
+
+                Authentication authentication = authenticationManager.authenticate(
+                        new UsernamePasswordAuthenticationToken(emailToUse, passwordToUse)
+                );
+
+                Cookie newJwtCookie = jwtTokenProvider.generateJwtCookie(authentication);
+                response.addCookie(newJwtCookie);
+            } catch (Exception e) {
+                // If authentication fails, still return success but log the issue
+                System.err.println("Failed to generate new JWT token: " + e.getMessage());
+            }
+        }
+
+        return ResponseEntity.ok("Updated successfully");
     }
 
     @DeleteMapping("/me")

@@ -1,8 +1,12 @@
 // src/main/java/com/example/secureapi/exception/GlobalExceptionHandler.java
 package com.example.secureapi.exception;
 
+import com.fasterxml.jackson.databind.JsonMappingException;
+import com.fasterxml.jackson.databind.exc.InvalidFormatException;
+import com.fasterxml.jackson.databind.exc.MismatchedInputException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
@@ -15,7 +19,10 @@ import org.springframework.web.servlet.NoHandlerFoundException;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
-
+import com.fasterxml.jackson.core.JsonParseException;
+import com.fasterxml.jackson.databind.JsonMappingException;
+import com.fasterxml.jackson.databind.exc.InvalidFormatException;
+import com.fasterxml.jackson.databind.exc.MismatchedInputException;
 @ControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -31,18 +38,21 @@ public class GlobalExceptionHandler {
     public ResponseEntity<?> handleValidationExceptions(MethodArgumentNotValidException ex, WebRequest request) {
         Map<String, String> errors = new HashMap<>();
         ex.getBindingResult().getAllErrors().forEach((error) -> {
-            String fieldName = ((FieldError) error).getField();
+            String fieldName = error instanceof FieldError ? ((FieldError) error).getField() : error.getObjectName();
             String errorMessage = error.getDefaultMessage();
             errors.put(fieldName, errorMessage);
         });
 
-        ErrorDetails errorDetails = new ErrorDetails(
-                new Date(),
-                "Validation Failed",
-                errors.toString(),
-                request.getDescription(false)
-        );
-        return new ResponseEntity<>(errorDetails, HttpStatus.BAD_REQUEST);
+        // Create a better structured response
+        Map<String, Object> errorResponse = new HashMap<>();
+        errorResponse.put("timestamp", new Date());
+        errorResponse.put("status", HttpStatus.BAD_REQUEST.value());
+        errorResponse.put("error", "Validation Failed");
+        errorResponse.put("message", "Input validation failed");
+        errorResponse.put("fieldErrors", errors);
+        errorResponse.put("path", request.getDescription(false).replace("uri=", ""));
+
+        return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
     }
 
     // ✅ ADDED: Handle BadRequestException (400 Bad Request)
@@ -84,5 +94,35 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(errorDetails, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
+    // ✅ ADD THIS: Handle JSON parsing errors (400 Bad Request)
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<?> handleHttpMessageNotReadableException(HttpMessageNotReadableException ex, WebRequest request) {
+        String errorMessage = "Invalid JSON format";
 
+        // Get the root cause for more specific error messages
+        Throwable rootCause = ex.getRootCause();
+        if (rootCause != null) {
+            if (rootCause instanceof JsonParseException) {
+                errorMessage = "Invalid JSON syntax: " + rootCause.getMessage();
+            } else if (rootCause instanceof JsonMappingException) {
+                errorMessage = "Invalid JSON mapping: " + rootCause.getMessage();
+            } else if (rootCause instanceof InvalidFormatException) {
+                errorMessage = "Invalid data format: " + rootCause.getMessage();
+            } else if (rootCause instanceof MismatchedInputException) {
+                errorMessage = "Unexpected JSON input: " + rootCause.getMessage();
+            } else {
+                errorMessage = "Malformed JSON request: " + rootCause.getMessage();
+            }
+        }
+
+        Map<String, Object> errorResponse = new HashMap<>();
+        errorResponse.put("timestamp", new Date());
+        errorResponse.put("status", HttpStatus.BAD_REQUEST.value());
+        errorResponse.put("error", "Bad Request");
+        errorResponse.put("message", errorMessage);
+        errorResponse.put("path", request.getDescription(false).replace("uri=", ""));
+
+        return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
     }
+
+}
