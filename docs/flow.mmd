@@ -1,0 +1,53 @@
+%% Mermaid flow diagram for secure-api program flow
+flowchart TD
+  subgraph Client
+    C[User Agent / API Client]
+  end
+
+  subgraph Server
+    AC[AuthController]
+    JP[JwtTokenProvider]
+    JF[JwtAuthenticationFilter]
+    CUDS[CustomUserDetailsService]
+    UR[UserRepository]
+    PR[ProductRepository]
+    PC[ProductController]
+    UC[UserController]
+    SC[SecurityConfig]
+  end
+
+  C -->|POST /api/auth/register| AC
+  AC -->|validate input| UR
+  AC -->|hash password (BCrypt)| UR
+  AC -->|save user| UR
+  AC -->|201 Created| C
+
+  C -->|POST /api/auth/login (email/password)| AC
+  AC -->|AuthenticationManager.authenticate| CUDS
+  AC -->|on success -> generate token| JP
+  JP -->|create cookie jwt (HttpOnly, Secure)| AC
+  AC -->|Set-Cookie: jwt=...| C
+
+  C -->|Any protected request with cookie| JF
+  JF -->|get cookie: WebUtils.getCookie(request,'jwt')| JF
+  JF -->|validate token| JP
+  JP -->|on valid -> get username| JF
+  JF -->|load user| CUDS
+  CUDS -->|fetch user details| UR
+  JF -->|set SecurityContextHolder| Server
+  JF -->|forward request| PC
+
+  PC -->|GET /api/products| PR
+  PC -->|POST /api/products (authenticated)| UR
+  PC -->|create product with userId from authenticated user| PR
+
+  PC -->|PUT /api/products/{id}| PR
+  PC -->|@PreAuthorize: hasRole('ADMIN') or owner(condition)| PR
+
+  UC -->|PUT /api/users/me| UR
+  UC -->|on email/password change -> re-authenticate| AC
+
+  note right of SC: SecurityConfig enforces HTTPS (requiresSecure) and adds JwtAuthenticationFilter
+
+  classDef server fill:#f9f,stroke:#333,stroke-width:1px;
+  class Server server
