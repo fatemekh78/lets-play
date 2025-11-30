@@ -18,16 +18,19 @@ import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
-import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.web.bind.annotation.*;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.List;
 
 @RestController
 @RequestMapping("/api/users")
 public class UserController {
+    private static final Logger log = LoggerFactory.getLogger(UserController.class);
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtTokenProvider jwtTokenProvider;
@@ -120,14 +123,12 @@ public class UserController {
 
     @GetMapping("/me")
     public ResponseEntity<UserResponse> getMyInfo(@AuthenticationPrincipal UserDetails userDetails) {
+        log.info("Received request for /me from user: {}", userDetails.getUsername());
         User loggedInUser = userRepository.findByEmail(userDetails.getUsername())
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
-
-        UserResponse userResponse = new UserResponse();
-        userResponse.setEmail(loggedInUser.getEmail());
-        userResponse.setName(loggedInUser.getName());
-        userResponse.setRole(loggedInUser.getRole().toString());
-
+        log.info("Fetched user from DB: {}", loggedInUser);
+        UserResponse userResponse = new UserResponse(loggedInUser);
+        log.info("Responding with user info: {}", userResponse);
         return ResponseEntity.ok().body(userResponse);
     }
 

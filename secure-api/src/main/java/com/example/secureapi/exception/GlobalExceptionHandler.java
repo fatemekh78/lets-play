@@ -20,9 +20,6 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
 import com.fasterxml.jackson.core.JsonParseException;
-import com.fasterxml.jackson.databind.JsonMappingException;
-import com.fasterxml.jackson.databind.exc.InvalidFormatException;
-import com.fasterxml.jackson.databind.exc.MismatchedInputException;
 @ControllerAdvice
 public class GlobalExceptionHandler {
 
@@ -55,7 +52,7 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(errorResponse, HttpStatus.BAD_REQUEST);
     }
 
-    // ✅ ADDED: Handle BadRequestException (400 Bad Request)
+    // Handle BadRequestException (400 Bad Request)
     @ExceptionHandler(BadRequestException.class)
     public ResponseEntity<?> handleBadRequestException(BadRequestException ex, WebRequest request) {
         ErrorDetails errorDetails = new ErrorDetails(
@@ -94,7 +91,7 @@ public class GlobalExceptionHandler {
         return new ResponseEntity<>(errorDetails, HttpStatus.INTERNAL_SERVER_ERROR);
     }
 
-    // ✅ ADD THIS: Handle JSON parsing errors (400 Bad Request)
+    //Handle JSON parsing errors (400 Bad Request)
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<?> handleHttpMessageNotReadableException(HttpMessageNotReadableException ex, WebRequest request) {
         String errorMessage = "Invalid JSON format";
@@ -104,12 +101,12 @@ public class GlobalExceptionHandler {
         if (rootCause != null) {
             if (rootCause instanceof JsonParseException) {
                 errorMessage = "Invalid JSON syntax: " + rootCause.getMessage();
-            } else if (rootCause instanceof JsonMappingException) {
-                errorMessage = "Invalid JSON mapping: " + rootCause.getMessage();
             } else if (rootCause instanceof InvalidFormatException) {
                 errorMessage = "Invalid data format: " + rootCause.getMessage();
             } else if (rootCause instanceof MismatchedInputException) {
                 errorMessage = "Unexpected JSON input: " + rootCause.getMessage();
+            } else if (rootCause instanceof JsonMappingException) {
+                errorMessage = "Invalid JSON mapping: " + rootCause.getMessage();
             } else {
                 errorMessage = "Malformed JSON request: " + rootCause.getMessage();
             }

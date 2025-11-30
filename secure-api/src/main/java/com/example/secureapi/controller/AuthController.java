@@ -1,14 +1,12 @@
 // src/main/java/com/example/secureapi/controller/AuthController.java
 package com.example.secureapi.controller;
 
-import com.example.secureapi.dto.AuthResponse;
 import com.example.secureapi.dto.LoginRequest;
 import com.example.secureapi.model.User;
 import com.example.secureapi.model.UserRole;
 import com.example.secureapi.repository.UserRepository;
 import com.example.secureapi.security.JwtTokenProvider;
 import jakarta.servlet.http.Cookie;
-import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -24,9 +22,13 @@ import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 @RestController
 @RequestMapping("/api/auth")
 public class AuthController {
+    private static final Logger log = LoggerFactory.getLogger(AuthController.class);
 
     @Autowired
     private UserRepository userRepository;
@@ -38,7 +40,7 @@ public class AuthController {
     private JwtTokenProvider jwtTokenProvider;
 
     @Autowired
-    private AuthenticationManager authenticationManager; // Add this
+    private AuthenticationManager authenticationManager;
 
     @PostMapping("/login")
     public ResponseEntity<?> authenticateUser(@Valid @RequestBody LoginRequest loginRequest, HttpServletResponse response) {
@@ -67,6 +69,7 @@ public class AuthController {
 
     @PostMapping("/register")
     public ResponseEntity<?> registerUser(@Valid @RequestBody User user) {
+        log.info("Received registration request: {}", user);
         try {
             // Check if email already exists
             if (userRepository.findByEmail(user.getEmail()).isPresent()) {
@@ -92,10 +95,11 @@ public class AuthController {
             user.setRole(UserRole.ROLE_USER);
 
             User savedUser = userRepository.save(user);
-
+            log.info("User saved to DB: {}", savedUser);
             return new ResponseEntity<>("User registered successfully", HttpStatus.CREATED);
 
         } catch (Exception e) {
+            log.error("Registration failed", e);
             return new ResponseEntity<>("Registration failed: " + e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
         }
     }

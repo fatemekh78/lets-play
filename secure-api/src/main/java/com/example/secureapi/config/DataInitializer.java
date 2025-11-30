@@ -13,8 +13,6 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import java.util.Optional;
 
 
-// NOTE: Ensure you replace 'com.yourproject' with your actual package structure
-
 @Configuration
 public class DataInitializer {
 
