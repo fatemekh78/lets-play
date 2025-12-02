@@ -168,6 +168,12 @@ public class UserController {
             newPassword = newPasswordPlain;
             needsNewToken = true;
         }
+        if(userUpdate.getRole()!= null) {
+            UpdateUser.setRole(userUpdate.getRole());
+        }
+        log.info("Before save - User role: {}", UpdateUser.getRole());
+        userRepository.save(UpdateUser);
+        log.info("After save - User role: {}", UpdateUser.getRole());
 
         // Save updated user
         userRepository.save(UpdateUser);
@@ -191,8 +197,8 @@ public class UserController {
             }
         }
 
-        return ResponseEntity.ok("Updated successfully");
-    }
+            return ResponseEntity.ok("Updated successfully");
+        }
 
     @DeleteMapping("/me")
     public ResponseEntity<String> deleteMyInfo(@AuthenticationPrincipal UserDetails userDetails,

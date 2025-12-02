@@ -8,6 +8,7 @@ import lombok.Data;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.mongodb.core.index.Indexed;
 import org.springframework.data.mongodb.core.mapping.Document;
+import org.springframework.data.mongodb.core.mapping.Field;
 
 @Document(collection = "users")
 @Data // Lombok annotation for getters, setters, toString, etc.
@@ -28,6 +29,6 @@ public class User {
     @NotBlank
     @Size(min = 6)
     private String password; // This will store the hashed password
-
+    @Field("role")
     private UserRole role;
 }
