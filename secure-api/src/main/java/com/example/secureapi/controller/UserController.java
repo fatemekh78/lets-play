@@ -2,6 +2,7 @@ package com.example.secureapi.controller;
 
 import com.example.secureapi.dto.UserResponse;
 import com.example.secureapi.dto.UserUpdate;
+import com.example.secureapi.dto.UserUpdateByAdminDto;
 import com.example.secureapi.exception.ResourceNotFoundException;
 import com.example.secureapi.model.Product;
 import com.example.secureapi.model.User;
@@ -59,7 +60,7 @@ public class UserController {
     @PutMapping("/{id}")
     @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<String> updateInfo(
-                                             @Valid @RequestBody UserUpdate userUpdate,
+                                             @Valid @RequestBody UserUpdateByAdminDto userUpdate,
                                              @PathVariable String id,
                                              HttpServletResponse response) {
         User UpdateUser = userRepository.findById(id)
@@ -92,6 +93,11 @@ public class UserController {
             String newPasswordPlain = userUpdate.getPassword().trim();
             UpdateUser.setPassword(passwordEncoder.encode(newPasswordPlain));
             newPassword = newPasswordPlain;
+            needsNewToken = true;
+        }
+
+        if (userUpdate.getRole() != null) {
+            UpdateUser.setRole(userUpdate.getRole());
             needsNewToken = true;
         }
 
